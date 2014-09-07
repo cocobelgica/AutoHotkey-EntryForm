@@ -8,12 +8,12 @@ License: **[WTFPL](http://wtfpl.net/)**
 - - -
 
 #### Syntax:
-```
+```javascript
 output := EntryForm( form, fields* )
 ```
 
 #### Return Value:
-```
+```javascript
 out := { "event": [ OK, Cancel, Close, Escape, Timeout ] , "output": [ field1, field2, ... ] }
 ```
 
@@ -23,13 +23,13 @@ form               [in] - string OR associative array specifying EntryForm windo
 fields*  [in, variadic] - string OR associative array specifying each field's options
 ```
 
-###### Form _(argument passed as string)_
+##### Form _(argument passed as string)_
 
 A space-delimited string containing one or more of the following option(s):
 
-* Title**'**_window_title_here_**'** - the window's caption
-* Icon**'**_icon_source **,** icon_number_**'** - small_(caption)_ and large_(Alt+Tab, taskbar)_ icon
-* Font**'**_font_options **,** font_name_**'** - global font, similar to _[Gui, Font](http://ahkscript.org/docs/commands/Gui.htm#Font)_
+* Title**'**_window-title-here_**'** - the window's caption
+* Icon**'**_icon-source **,** icon-number_**'** - small_(caption)_ and large_(Alt+Tab, taskbar)_ icon
+* Font**'**_font-options **,** font-name_**'** - global font, similar to _[Gui, Font](http://ahkscript.org/docs/commands/Gui.htm#Font)_
 * Tn - timeout, where **n** is the amount in milliseconds
 * Xn, Yn, Wn - window position, similar to _[Gui, Show](http://ahkscript.org/docs/commands/Gui.htm#Show)_, _(height is automatically calculated)_
 
@@ -44,18 +44,18 @@ form := "Title'Test EntryForm' Icon'cmd.exe,0' Font's10 cBlue,Consolas' T5000"
 output := EntryForm(form, ...)
 ```
 
-###### Fields _(argument(s) passed as string)_
+##### Fields _(argument(s) passed as string)_
 
 A space-delimited string containing one or more of the following option(s):
 
- * Prompt**'**_prompt_here_**'** - similar to _prompt_ parameter of InputBox
- * Default**'**_default_text_**'** - similar to _default_ parameter of InputBox
- * Font**'**_prompt_font_options **,** prompt_font_name **;** input_font_options **,** input_font_name_**'** - arguments for prompt and input field are separated by a semicolon
- * Cue**'**_edit_field_cue_banner_**'** - textual cue, or tip, that is displayed by the edit control to prompt the user for information
- * Tip**'**_tooltip_text_**'** - if specified, a tooltip is shown when the mouse hovers on the input field_(Edit control)_
- * UpDown**'**_updown_control_options_**'** - attaches an UpDown control to the input field, options is the sames _[Gui Add, UpDown](http://ahkscript.org/docs/commands/GuiControls.htm#UpDown)_
- * File**'**_fileselectfile_args_here_**'** - if specified, a button is placed to the right of the input field to allow user(s) to browse for file(s). Similar to _[FileSelectFile](http://ahkscript.org/docs/commands/FileSelectFile.htm)_
- * Dir**'**_fileselectfolder_args_here_**'** - if specified, a button is placed to the right of the input field to allow user(s) to browse for a folder. Similar to _[FileSelectFolder](http://ahkscript.org/docs/commands/FileSelectFolder.htm)_
+ * Prompt**'**_prompt-here_**'** - similar to _prompt_ parameter of InputBox
+ * Default**'**_default-text_**'** - similar to _default_ parameter of InputBox
+ * Font**'**_prompt-font-options **,** prompt-font-name **;** input-font-options **,** input-font-name_**'** - arguments for prompt and input field are separated by a semicolon
+ * Cue**'**_edit-field-cue-banner_**'** - textual cue, or tip, that is displayed by the edit control to prompt the user for information
+ * Tip**'**_tooltip-text_**'** - if specified, a tooltip is shown when the mouse hovers on the input field_(Edit control)_
+ * UpDown**'**_updown-control-options_**'** - attaches an UpDown control to the input field, options is the sames _[Gui Add, UpDown](http://ahkscript.org/docs/commands/GuiControls.htm#UpDown)_
+ * File**'**_fileselectfile-args-here_**'** - if specified, a button is placed to the right of the input field to allow user(s) to browse for file(s). Similar to _[FileSelectFile](http://ahkscript.org/docs/commands/FileSelectFile.htm)_
+ * Dir**'**_fileselectfolder-args-here_**'** - if specified, a button is placed to the right of the input field to allow user(s) to browse for a folder. Similar to _[FileSelectFolder](http://ahkscript.org/docs/commands/FileSelectFolder.htm)_
  * Others - options that apply to Edit controls should work. _(e.g.: R1 HScroll -Wrap etc..)_
 
 **Example:**
