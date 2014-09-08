@@ -28,13 +28,12 @@ EntryForm(form, fields*) {
 	     , sizeof_TOOLINFO := 24 + (A_PtrSize * 6)
 	     , sizeof_OFN      := 36 + (13 * A_PtrSize)
 	
-	static btn_size, himl
+	static btn_size := 0, himl := 0
 	
-	;// local variables (main body)
-	local sform, i, m, s_form, tok, hForm, hIconL := hIconS := 0, RECT, width
-	    , idx, field, sfield, font, is_input, ftype, hPrompt, hInput, is_multi
-	    , input_pos, j, btn, hBtn, vBtn, BTN_IMGLIST, btns := {}, k, dhw
-	    , flds := [], ret
+	;// local variables (main function body)
+	local sform, i, m, hForm, hIconL := hIconS := 0, RECT, width, idx, field
+	    , sfield, font, is_input, ftype, hPrompt, hInput, is_multi, input_pos
+	    , j, btn, hBtn, vBtn, BTN_IMGLIST, btns := {}, k, dhw, flds := [], ret
 	
 	;// local variables for EF_SelectFile subroutine(local label)
 	local options, flags, root_dir, prompt, filter, lpstrFile, lpstrFilter
@@ -44,7 +43,7 @@ EntryForm(form, fields*) {
 	local shell, folder ;// ,options -> declared above
 
 	;// local variables for EF_SetToolTip subroutine(local label)
-	local tt := {}, hTip, tt_tmp
+	local tt := {}, hTip := 0, tt_tmp
 	
 	
 	;// __Delete - This routine is called during script script's exit
@@ -55,6 +54,7 @@ EntryForm(form, fields*) {
 		return
 	}
 	
+	;// Function starts here
 	if !IsObject(form)
 	{
 		sform := form, form := {}, i := 1
@@ -63,16 +63,16 @@ EntryForm(form, fields*) {
 			form[m[1]] := m[2]
 			sform := SubStr(sform, 1, i-1) . SubStr(sform, i+m.Len)
 		}
-		s_form := is_v2 ? sform : "sform"
-		Loop Parse, %s_form%, % " ", `t`r`n
+		m := is_v2 ? sform : "sform" ;// just re-use the variables(m & i) used above
+		Loop Parse, %m%, % " `t`r`n"
 		{
-			if InStr( " tf", tok := SubStr(A_LoopField, 1, 1) )-1
-				form[tok = "t" ? "timeout" : "func"] := SubStr(A_LoopField, 2)
-			else
-				form.pos .= " " A_LoopField
+			if ( InStr( " xyw", i := SubStr(A_LoopField, 1, 1) ) > 1 )
+				form.pos .= " " . A_LoopField
+			else if (i = "t")
+				form.timeout := SubStr(A_LoopField, 2)
 		}
 	}
-	
+
 	;// Create EntryForm window
 	Gui New, +HwndhForm +LabelEF_
 	
@@ -81,15 +81,13 @@ EntryForm(form, fields*) {
 	                                 : ["s10", "MS Shell Dlg 2"]
 	Gui Font, % form.font[1], % form.font[2]
 	Gui Margin, 10, 10
-	
-	;// Initialize GUI position
+
+	;// Initialize window position
 	if !InStr(form.pos, "w")
-		form.pos .= " w375" ;// default width, same as InputBox
-	if !(form.pos ~= "i)[xy](\d+|Center)")
-		form.pos .= " Center"
-	else if !InStr(form.pos, "x")
+		form.pos .= " w375"    ;// same default width as InputBox
+	if !InStr(form.pos, "x")
 		form.pos .= " xCenter"
-	else if !InStr(form.pos, "y")
+	if !InStr(form.pos, "y")
 		form.pos .= " yCenter"
 	
 	;// Show hidden
