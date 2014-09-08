@@ -14,7 +14,10 @@ output := EntryForm( form, fields* )
 
 #### Return Value:
 ```javascript
-out := { "event": [ OK, Cancel, Close, Escape, Timeout ] , "output": [ field1, field2, ... ] }
+out := {
+    "event":  [ OK, Cancel, Close, Escape, Timeout ], // [string] either of these
+    "output": [ field1, field2, ... ] // array containing the output of each input field
+}
 ```
 
 #### Parameters:
@@ -23,23 +26,26 @@ form               [in] - string OR associative array specifying EntryForm windo
 fields*  [in, variadic] - string OR associative array specifying each field's options
 ```
 
-##### Form _(argument passed as string)_
 
-A space-delimited string containing one or more of the following option(s):
+##### Form Options:
 
-```javascript
-Title'window-title-here'       - the window's caption
+A space-delimited string containing one or more of the following below. _Note: some argument(s) following the option name must be surrounded with single quotes ``'``_:
 
-Icon'icon-source, icon-number' - small(caption) and large(Alt+Tab, taskbar) icon
+Option / Syntax | Description
+----------------|------------
+``Title'window-title'`` | Window caption, surround _window-title_ with single quotes
+``Icon'icon,icon-number'`` | _icon_ can be an icon file, exe or dll. _icon-number_ is optional
+``Font'options,name'`` | Global font, usage is the same as in _[Gui, Font](http://ahkscript.org/docs/commands/Gui.htm#Font)_
+``Tn`` | Timeout, where _n_ is the amount in milliseconds
+``Xn, Yn, Wn`` | Window position, same as in _[Gui, Show](http://ahkscript.org/docs/commands/Gui.htm#Show)_
 
-Font'font-options, font-name'  - global font, similar to "Gui, Font"
+**Remarks:**
 
-Tn                             - timeout, where "n" is the amount in milliseconds
-
-Xn, Yn, Wn                     - window position, similar to "Gui, Show"
-```
-
+ * Window height must not be specified - it is calculated automatically based on the total number of input fields
+ * For _Icon_, the same icon will be used for the window caption (small) and the Alt+Tab switcher (large) 
+ 
 **Example:**
+
 ```javascript
 /* If window position is not specified, it is shown in the center
  * The 'Font' option applies to fields(controls) whose 'Font' is not specified
@@ -50,40 +56,30 @@ form := "Title'Test EntryForm' Icon'cmd.exe,0' Font's10 cBlue,Consolas' T5000"
 output := EntryForm(form, ...)
 ```
 
-##### Fields _(argument(s) passed as string)_
 
-A space-delimited string containing one or more of the following option(s):
+##### Fields Options:
 
-```javascript
-Prompt'prompt-text'         - similar to "Prompt" parameter of InputBox
+A space-delimited string containing one or more of the following below. _Note: some argument(s) following the option name must be surrounded with single quotes ``'``_:
 
-Default'default-text'       - similar to "Default" parameter of InputBox
+Option / Syntax | Description
+----------------|------------
+``Prompt'prompt-text'`` | similar to _Prompt_ parameter of _[InputBox](http://ahkscript.org/docs/commands/InputBox.htm)_
+``Default'default-text'`` | similar to _Default_ parameter of _[InputBox](http://ahkscript.org/docs/commands/InputBox.htm)_
+``Font'options,name;options,name'`` | a semicolon separates the options for the prompt and the options for the input field
+``Cue'cue-banner'`` | textual cue, or tip, that is displayed by the _Edit_ control
+``Tip'tooltip-text'`` | tooltip for the input field, shown when mouse cursor is over the _Edit_ control
+``UpDown'options'`` | attaches an UpDown control to the input field. UpDown control _options_ are the same as in _[Gui, Add, UpDown](http://ahkscript.org/docs/commands/GuiControls.htm#UpDown)_
+``File'fileselect-args'`` | a button is placed to the right of the input field. When pressed, a _[FileSelectFile](http://ahkscript.org/docs/commands/FileSelectFile.htm)_ dialog is shown.
+``Dir'dirselect-args'`` | same as _File_ above, but works like _[FileSelectFolder](http://ahkscript.org/docs/commands/FileSelectFolder.htm)_
+``Others`` | common options that apply to _Edit_ controls should work e.g.: ``R1 -Wrap HScroll``
 
-/* Font:
- * pfo = prompt-font-options, pfn = prompt-font-name
- * ifo = input-font-options,  ifn = input-font-name
- */
-Font'pfo,pfn ; ifo,ifn'     - a semicolon separates the options for the prompt and
-                              the options for the input field
+**Remarks:**
 
-Cue'edit-field-cue-banner'  - textual cue, or tip, that is displayed by the edit control
-
-Tip'tooltip-text'           - a tooltip is shown when the mouse hovers on the edit control
-
-UpDown'updown-ctrl-options' - attaches an UpDown control to the input field. UpDown control
-                              options are the same as in "Gui, Add, UpDown"
-
-File'fileselectfile-args'   - a button is placed to the right of the input field. When
-                              pressed, a "FileSelectFile" dialog is shown
-
-Dir'fileselectfolder-args'  - same as "File" above, but works like "FileSelectFolder"
-
-Others                      - options that apply to Edit controls should work.
-                              e.g.: "R1 -Wrap HScroll"
-```
-
+ * For _File_ and _Dir_, order of arguments is the same is in their counterpart AHK commands
+ * Input field width must not be specified - it is calculated automatically based on the EntryForm window width
 
 **Example:**
+
 ```javascript
 /* For options which require arguments to be enclosed in single quotes, to specify a literal
  * single quote, escape it with a backslash '\'
