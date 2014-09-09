@@ -13,11 +13,13 @@ EntryForm(form, fields*) {
 	;// Object built-in functions (v1.1 and v2.0-a049 compatibility)
 	static del  := Func( is_v2 ? "ObjRemoveAt" : "ObjRemove" )
 	     , push := Func( is_v2 ? "ObjPush"     : "ObjInsert" )
-	
-	;// RegEx needles to extract options
-	static ndl  := ( is_v2 ? "i)" : "Oi)" ) . "(title|icon|font|"
-	            .  "prompt|default|cue|file|dir|tip|updown)'(.*?[^\\])'"
-	     , ndlb := ( is_v2 ? "i)" : "Oi)" ) . "(?<=^|,)\s*\K.*?(?=(?<!\\),|$)"
+
+	static args := { "c":"caption", "f":"font", "fnt":"font", "i":"icon"
+	               , "p":"pos", "t":"timeout", "o":"options"
+	               , "-p":"prompt", "-d":"default", "-fnt":"font", "-cb":"cue"
+	               , "-cue":"cue", "-fs":"file", "-ds":"dir", "-tt":"tip"
+	               , "-ud":"updown", "-o":"options", "-opt":"options" }
+	     , delims := [ " ", ":", "`t", "`r", "`n" ]
 	
 	;// for DllCall()
 	static ExtractIconEx := "shell32\ExtractIconEx" . (A_IsUnicode ? "W" : "A")
@@ -29,11 +31,13 @@ EntryForm(form, fields*) {
 	     , sizeof_OFN      := 36 + (13 * A_PtrSize)
 	
 	static btn_size := 0, himl := 0
-	
+	     , ndl := ( is_v2 ? "i)" : "Oi)" ) . "(?<=^|,)\s*\K.*?(?=(?<!\\),|$)"
+
 	;// local variables (main function body)
-	local sform, i, m, hForm, hIconL := hIconS := 0, RECT, width, idx, field
-	    , sfield, font, is_input, ftype, hPrompt, hInput, is_multi, input_pos
-	    , j, btn, hBtn, vBtn, BTN_IMGLIST, btns := {}, k, dhw, flds := [], ret
+	local s_opt, quoted, opt, i, j, str, key, hForm, hIconL := hIconS := 0
+	    , RECT, width, idx, field, font, is_input, ftype, hPrompt, hInput
+	    , is_multi, input_pos, btn, hBtn, vBtn, BTN_IMGLIST, btns := {}, k, m
+	    , dhw, flds := [], ret
 	
 	;// local variables for EF_SelectFile subroutine(local label)
 	local options, flags, root_dir, prompt, filter, lpstrFile, lpstrFilter
@@ -55,26 +59,53 @@ EntryForm(form, fields*) {
 	}
 	
 	;// Function starts here
+	;   Extract quoted strings from params to make parsing easier
+	s_opt := [], quoted := []
+	for i, opt in [form, fields*]
+	{
+		if IsObject(opt)
+			continue
+		i := 0 ;// just recycle variable above, not so sure about side effects
+		while ( i := InStr(opt, "'",, i+1) ) {
+			j := i
+			while ( j := InStr(opt, "'",, j+1) ) {
+				str := SubStr(opt, i+1, j-i-1)
+				if ( SubStr(str, 0-is_v2) != "\" )
+					break
+			}
+			opt := SubStr(opt, 1, i) . SubStr(opt, j+1)
+			%push%(quoted, str)
+		}
+		%push%(s_opt, opt)
+	}
+
 	if !IsObject(form)
 	{
-		sform := form, form := {}, i := 1
-		while (i := RegExMatch(sform, ndl, m, i))
+		form := {}, key := ""
+		for i, opt in StrSplit( %del%(s_opt, 1), delims )
 		{
-			form[m[1]] := m[2]
-			sform := SubStr(sform, 1, i-1) . SubStr(sform, i+m.Len)
-		}
-		m := is_v2 ? sform : "sform" ;// just re-use the variables(m & i) used above
-		Loop Parse, %m%, % " `t`r`n"
-		{
-			if ( InStr( " xyw", i := SubStr(A_LoopField, 1, 1) ) > 1 )
-				form.pos .= " " . A_LoopField
-			else if (i = "t")
-				form.timeout := SubStr(A_LoopField, 2)
+			if (opt == "")
+				continue
+			
+			if (opt ~= "i)^-([cfipto]|cap|fnt|ico|pos|to|opt)$")
+				form[ key := args[SubStr(opt, 2, 1)] ] := ""
+
+			else if (opt == "'")
+				form[key] := %del%(quoted, 1), key := ""
+
+			else if (opt ~= "i)^[xyw](\d+|Center)$")
+				form.pos .= " " . opt
+
+			else if (opt ~= "i)^t\d+$")
+				form.timeout := SubStr(opt, 2) + 0
+
+			else
+				key? ( form[key] := opt, key := "" ) : form.options .= " " . opt
 		}
 	}
 
 	;// Create EntryForm window
-	Gui New, +HwndhForm +LabelEF_
+	Gui New, % "+HwndhForm +LabelEF_ " . form.options
 	
 	;// Initialize font, InputBox uses 's10, MS Shell Dlg 2' on OS >= WIN_7??
 	form.font := form.HasKey("font") ? StrSplit(form.font, ",", " `t`r`n")
@@ -91,7 +122,7 @@ EntryForm(form, fields*) {
 		form.pos .= " yCenter"
 	
 	;// Show hidden
-	Gui Show, % "Hide " form.pos
+	Gui Show, % "Hide " form.pos, % form.caption
 
 	;// Set window icon if specified
 	;   Small icon for the caption | large icon for Alt+Tab and taskbar
@@ -119,16 +150,24 @@ EntryForm(form, fields*) {
 	
 	for idx, field in fields
 	{
+		;// Parse arguments/options
 		if !IsObject(field)
 		{
-			sfield := field, field := {}, i := 1
-			while (i := RegExMatch(sfield, ndl, m, i))
+			field := {}, key := ""
+			for i, opt in StrSplit( %del%(s_opt, 1), delims )
 			{
-				field[m[1]] := m[2]
-				sfield := SubStr(sfield, 1, i-1) . SubStr(sfield, i+m.Len)
+				if (opt == "")
+					continue
+
+				if (opt ~= "i)^-([pdo]|fnt|cb|[fd]s|tt|ud|opt)$")
+					field[ key := args[opt] ] := ""
+
+				else if (opt == "'")
+					field[key] := %del%(quoted, 1), key := ""
+
+				else
+					key? ( field[key] := opt, key := "" ) : field.options .= " " . opt
 			}
-			
-			field.options := Trim(sfield, " `t`r`n")
 		}
 
 		;// Set font
@@ -245,7 +284,7 @@ EntryForm(form, fields*) {
 
 			btns[vBtn] := { "input": hInput, "options": [] }
 			k := 1
-			while ( k := RegExMatch(field[btn], ndlb, m, k) )
+			while ( k := RegExMatch(field[btn], ndl, m, k) )
 				btns[vBtn].options[A_Index] := m.Value(), k += m.Len()
 
 			tt.ctrl := hBtn, tt.text := "Browse " . (btn != "file" ? "folder" : btn)
@@ -260,7 +299,7 @@ EntryForm(form, fields*) {
 	               , OK
 	Gui Add, Button, x+20 yp wp hp gEF_Cancel, Cancel
 	
-	Gui Show, % "AutoSize " form.pos, % form.title
+	Gui Show, % "AutoSize " form.pos, % form.caption
 	dhw := A_DetectHiddenWindows
 	DetectHiddenWindows On
 	WinWaitClose ahk_id %hForm%,, % form.timeout/1000
