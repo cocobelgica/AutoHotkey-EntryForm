@@ -1,3 +1,43 @@
+/* Function: EntryForm
+ *     Create custom InputBox, data entry forms
+ * License: WTFPL (http://www.wtfpl.net/)
+ * AutoHotkey Version: AHK v1.1+ OR v2.0-a049+
+ * Syntax:
+ *     ef := EntryForm( form, fields* )
+ * Return Value:
+ *     ef := {
+ *         "event":  [ OK, Cancel, Close, Escape, Timeout ],
+ *         "output": [ field1, field2 ... ]
+ *     }
+ * Parameter(s):
+ *     form               [in] - EntryForm window options
+ *     fields*  [in, variadic] - Input field's options
+ * Parameter(s) Details:
+ *     Space-delimited string contianing one or more of the following
+ *     options + argument(s). Arguments are passed in command line-like syntax.
+ *     Arguments conatining spaces must be enclosed in single quotes. Multiple
+ *     arguments are separated by a comma.
+ * Form parameter options:
+ *     -cap | -c <caption>                 - window title/caption
+ *     -fnt | -f <options,name>            - window font
+ *     -ico | -i <icon,icon-no>            - window icon
+ *     -t <timeout> OR Tn                  - timeout in milliseconds
+ *     -pos | -p <pos> OR [Xn, Yn, Wn]     - window position when shown
+ *     -opt | -o <options> OR [options...] - standard GUI options
+ * Fields* parameter options:
+ *     -p <prompt>                         - prompt
+ *     -d <default>                        - default text
+ *     -fnt <options,name;options,name>    - font, [prompt-font;input-font]
+ *     -cb <cuebanner>                     - cuebanner
+ *     -tt <tooltip>                       - field tooltip
+ *     -ud <updown-ctrl-options>           - attaches an UpDown control
+ *     -fs <fileselect-args>               - browse file(s) button
+ *     -ds <dirselect-args>                - browse folder button
+ *     -opt | -o <options> OR [options...] - standard Edit control options
+ * Link(s):
+ *     Forum post  (http://ahkscript.org/boards/viewtopic.php?f=6&t=4559)
+ *     GitHub repo (https://github.com/cocobelgica/AutoHotkey-EntryForm)
+ */
 EntryForm(form, fields*) {
 	;// assume static mode for GUI controls variable(s)
 	static
@@ -7,8 +47,10 @@ EntryForm(form, fields*) {
 	static ef := { "__Delete": Func("EntryForm") }
 	     , _  := new ef ;// static vars are released alphabetically
 	
+	;// Misc variables
 	static is_v2 := A_AhkVersion >= "2"
 	     , is_xp := ( is_v2 ? (A_OSVersion < "6") : (A_OSVersion == "WIN_XP") )
+	     , end   := ( is_v2 ? -1 : 0 )
 	
 	;// Object built-in functions (v1.1 and v2.0-a049 compatibility)
 	static del  := Func( is_v2 ? "ObjRemoveAt" : "ObjRemove" )
@@ -31,7 +73,7 @@ EntryForm(form, fields*) {
 	     , sizeof_OFN      := 36 + (13 * A_PtrSize)
 	
 	static btn_size := 0, himl := 0
-	     , ndl := ( is_v2 ? "i)" : "Oi)" ) . "(?<=^|,)\s*\K.*?(?=(?<!\\),|$)"
+	     , ndl := ( is_v2 ? "i)" : "Oi)" ) . "(?<=^|,)\s*\K.*?(?=(?<!\\),|$)" ;// not used
 
 	;// static variable(s) for EF_SelectFile subroutine
 	;   1 = OFN_FILEMUSTEXIST, 2 = OFN_PATHMUSTEXIST, 8 = OFN_CREATEPROMPT
@@ -41,7 +83,7 @@ EntryForm(form, fields*) {
 	;// static variable(s) for EF_SelectDir subroutine
 	;   BIF_NONEWFOLDERBUTTON = 0x200, BIF_NEWDIALOGSTYLE = 0x40
 	;   BIF_EDITBOX = 0x10, BIF_USENEWUI = 0x10|0x40
-	;   0 = 0x200, 1 = 0x40, 2 = 0x200|0x10, 3 = 0x40|0x10
+	;   0 = 0x200, 1 = 0x40, 2 = 0x200|0x10, 3 = 0x40|0x10, 4 and 5 = ??
 	static ds_flags := { 0: 0x200, 1: 0x40, 2: 0x210, 3: 0x50, 4: 0x200, 5: 0x200 }
 	     , shell    := 0 ;// ComObjCreate("Shell.Application") -> just set if used/needed
 
@@ -85,7 +127,7 @@ EntryForm(form, fields*) {
 			j := i
 			while ( j := InStr(opt, "'",, j+1) ) {
 				str := SubStr(opt, i+1, j-i-1)
-				if ( SubStr(str, 0-is_v2) != "\" )
+				if ( SubStr(str, end) != "\" )
 					break
 			}
 			opt := SubStr(opt, 1, i) . SubStr(opt, j+1)
@@ -275,7 +317,7 @@ EntryForm(form, fields*) {
 			if !himl
 			{
 				himl := { "file": IL_Create(1, 5), "dir": IL_Create(1, 5) }
-				, IL_Add(himl.file, "shell32.dll", 56)  ;// 56 = 1-based index
+				, IL_Add(himl.file, "shell32.dll", 56)  ;// 56  = 1-based index
 				, IL_Add(himl.dir, "imageres.dll", 205) ;// 205 = 1-based index
 			}
 
@@ -302,7 +344,7 @@ EntryForm(form, fields*) {
 				k := -1
 				while (k := InStr(b_arg, "\,",, k+2))
 					b_arg := SubStr(b_arg, 1, k-1) . SubStr(b_arg, k+1)
-				if (SubStr(b_arg, -1) != "\")
+				if (SubStr(b_arg, end) != "\")
 					%push%(btns[vBtn].args, b_arg), jj := ii
 			}
 
@@ -322,7 +364,7 @@ EntryForm(form, fields*) {
 	DetectHiddenWindows On
 	WinWaitClose ahk_id %hForm%,, % form.timeout/1000
 	if ErrorLevel
-		gosub EF_Timeout
+		gosub EF_Timeout ;// WinClose ahk_id %hForm% -> triggers EF_CLose
 	DetectHiddenWindows %dhw%
 	
 	;// { "event": [ OK, Cancel, Close, Escape, Timeout ], "output": [ field1, field2 ... ] }
