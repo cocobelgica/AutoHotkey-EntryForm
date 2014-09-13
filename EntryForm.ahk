@@ -27,24 +27,39 @@ EntryForm(form, fields*) {
 	
 	;// Constants for TOOLINFO & OPENFILENAME structs
 	static TTM_ADDTOOL     := A_IsUnicode ? 0x0432 : 0x0404
-	     , sizeof_TOOLINFO := 24 + (A_PtrSize * 6)
+	     , sizeof_TOOLINFO := 24 + (6 * A_PtrSize)
 	     , sizeof_OFN      := 36 + (13 * A_PtrSize)
 	
 	static btn_size := 0, himl := 0
 	     , ndl := ( is_v2 ? "i)" : "Oi)" ) . "(?<=^|,)\s*\K.*?(?=(?<!\\),|$)"
 
+	;// static variable(s) for EF_SelectFile subroutine
+	;   1 = OFN_FILEMUSTEXIST, 2 = OFN_PATHMUSTEXIST, 8 = OFN_CREATEPROMPT
+	;   16 = OFN_OVERWRITEPROMPT, 32 = OFN_NODEREFERENCELINKS
+	static fs_flags := { 1: 0x1000, 2: 0x800, 8: 0x2000, 16: 0x2, 32: 0x100000 }
+	
+	;// static variable(s) for EF_SelectDir subroutine
+	;   BIF_NONEWFOLDERBUTTON = 0x200, BIF_NEWDIALOGSTYLE = 0x40
+	;   BIF_EDITBOX = 0x10, BIF_USENEWUI = 0x10|0x40
+	;   0 = 0x200, 1 = 0x40, 2 = 0x200|0x10, 3 = 0x40|0x10
+	static ds_flags := { 0: 0x200, 1: 0x40, 2: 0x210, 3: 0x50, 4: 0x200, 5: 0x200 }
+	     , shell    := 0 ;// ComObjCreate("Shell.Application") -> just set if used/needed
+
+
 	;// local variables (main function body)
 	local s_opt, quoted, opt, i, j, str, key, hForm, hIconL := hIconS := 0
 	    , RECT, width, idx, field, font, is_input, ftype, hPrompt, hInput
-	    , is_multi, input_pos, btn, hBtn, vBtn, BTN_IMGLIST, btns := {}, k, m
-	    , dhw, flds := [], ret
+	    , is_mline, input_pos, btn, hBtn, vBtn, BTN_IMGLIST, btns := {}, ii, jj
+	    , b_arg, k, dhw, flds := [], ret
 	
 	;// local variables for EF_SelectFile subroutine(local label)
-	local options, flags, root_dir, prompt, filter, lpstrFile, lpstrFilter
-	    , ext, flen1, flen2, OPENFILENAME, selected
-	
+	;   opt, i, is_mline -> declared above
+	local dlg_args, prompt, filter, lpstrFile, init_dir, init_file, flags, flag
+	    , lpstrFilter, ext, flen1, flen2, OPENFILENAME, addr, sel, dir, files
+
 	;// local variables for EF_SelectDir subroutine(local label)
-	local shell, folder ;// ,options -> declared above
+	;   dlg_args, prompt, init_dir, flags, flag -> declared above
+	local folder
 
 	;// local variables for EF_SetToolTip subroutine(local label)
 	local tt := {}, hTip := 0, tt_tmp
@@ -58,7 +73,7 @@ EntryForm(form, fields*) {
 		return
 	}
 	
-	;// Function starts here
+	;// ROUTINE STARTS HERE
 	;   Extract quoted strings from params to make parsing easier
 	s_opt := [], quoted := []
 	for i, opt in [form, fields*]
@@ -125,29 +140,24 @@ EntryForm(form, fields*) {
 	Gui Show, % "Hide " form.pos, % form.caption
 
 	;// Set window icon if specified
-	;   Small icon for the caption | large icon for Alt+Tab and taskbar
+	;   Small icon for the caption | large icon for Alt+Tab and taskbar(v2 only??)
 	if form.HasKey("icon")
 	{
 		form.icon := StrSplit(form.icon, ",", " `t`r`n")
-		DllCall(
-		(Join Q C
-			ExtractIconEx,
-			"Str",   form.icon[1],
-			"Int",   form.icon[2] + 0,
-			"UIntP", hIconL,
-			"UIntP", hIconS,
-			"UInt",  2
-		))
+		DllCall(ExtractIconEx, "Str", form.icon[1], "Int", form.icon[2] + 0
+		      , "UIntP", hIconL, "UIntP", hIconS, "UInt", 2)
+		
 		;// WM_SETICON = 0x0080
 		DllCall("SendMessage", "Ptr", hForm, "Int", 0x0080, "Ptr", 0, "Ptr", hIconS)
 		DllCall("SendMessage", "Ptr", hForm, "Int", 0x0080, "Ptr", 1, "Ptr", hIconL)
 	}
 	
-	;// Get GUI width-left+right margin, controls are confined within this width
+	;// Get GUI width-(left+right) margin, controls are confined within this width
 	VarSetCapacity(RECT, 16, 0)
 	, DllCall("GetClientRect", "Ptr", hForm, "Ptr", &RECT)
 	, width := NumGet(RECT, 8, "UInt")-20
 	
+	;// Add the EntryForm fields
 	for idx, field in fields
 	{
 		;// Parse arguments/options
@@ -203,7 +213,7 @@ EntryForm(form, fields*) {
 		flds[idx] := hInput
 		GuiControlGet input_pos, Pos, %hInput%
 		;// ES_MULTILINE := 0x0004
-		is_multi := DllCall(GetWindowLong, "Ptr", hInput, "Int", -16, "Ptr") & 0x0004
+		is_mline := DllCall(GetWindowLong, "Ptr", hInput, "Int", -16, "Ptr") & 0x0004
 
 		;// ToolTip
 		if field.HasKey("tip")
@@ -228,7 +238,7 @@ EntryForm(form, fields*) {
 				continue
 
 			;// Get default button size based on system's default font
-			if !btn_size
+			if !btn_size ;// static variable
 			{
 				Gui New
 				; Gui Font, s10, MS Shell Dlg 2 ;// Used by InputBox??
@@ -240,12 +250,12 @@ EntryForm(form, fields*) {
 			}
 
 			j += 1
-			GuiControl, Move, %hInput%, % "w" width - ( (btn_size + 3) * (is_multi? 1 : j) )
+			GuiControl, Move, %hInput%, % "w" width - ( (btn_size + 3) * (is_mline? 1 : j) )
 			GuiControlGet input_pos, Pos, %hInput%
 			if (j > 1)
 				GuiControl Move, %hBtn%, % "x" input_posW + 13 ;// margin + padding
 			Gui Add, Button, % "w" btn_size " h" btn_size
-			                 . " y" ( j > 1 && is_multi ? "+3" : "p" )
+			                 . " y" ( j > 1 && is_mline ? "+3" : input_posY )
 			                 . " xm+" width - btn_size
 			                 . " HwndhBtn gEF_Select" btn
 			GuiControl % "+v" ( vBtn := "ef_btn_" . hBtn ), %hBtn%
@@ -282,10 +292,19 @@ EntryForm(form, fields*) {
 			;// BCM_SETIMAGELIST = 0x1602
 			SendMessage 0x1602, 0, % &BTN_IMGLIST,, ahk_id %hBtn%
 
-			btns[vBtn] := { "input": hInput, "options": [] }
-			k := 1
-			while ( k := RegExMatch(field[btn], ndl, m, k) )
-				btns[vBtn].options[A_Index] := m.Value(), k += m.Len()
+			btns[vBtn] := { "input": hInput, "args": [] }
+			
+			;// Parse option arguments, comma-delimited
+			ii := jj := 0
+			while (ii := InStr(field[btn] . ",", ",",, ii+1))
+			{
+				b_arg := SubStr(field[btn], jj+1, ii-jj-1)
+				k := -1
+				while (k := InStr(b_arg, "\,",, k+2))
+					b_arg := SubStr(b_arg, 1, k-1) . SubStr(b_arg, k+1)
+				if (SubStr(b_arg, -1) != "\")
+					%push%(btns[vBtn].args, b_arg), jj := ii
+			}
 
 			tt.ctrl := hBtn, tt.text := "Browse " . (btn != "file" ? "folder" : btn)
 			gosub EF_SetToolTip
@@ -294,11 +313,10 @@ EntryForm(form, fields*) {
 	}
 
 	;// Add OK and Cancel buttons
-	Gui Add, Button, % "w100 r1 gEF_OK xm+" (width/2)-110
-	                 . " y" input_posY + input_posH + 20
-	               , OK
+	Gui Add, Button, % "w100 r1 gEF_OK xm+" (width/2)-110 " y" input_posY + input_posH + 20, OK
 	Gui Add, Button, x+20 yp wp hp gEF_Cancel, Cancel
 	
+	;// Show the EntryForm and wait for it to close / gets destroyed
 	Gui Show, % "AutoSize " form.pos, % form.caption
 	dhw := A_DetectHiddenWindows
 	DetectHiddenWindows On
@@ -306,120 +324,156 @@ EntryForm(form, fields*) {
 	if ErrorLevel
 		gosub EF_Timeout
 	DetectHiddenWindows %dhw%
-	if hIconL
-		DllCall("DestroyIcon", "Ptr", hIconL)
-	if hIconS
-		DllCall("DestroyIcon", "Ptr", hIconS)
+	
+	;// { "event": [ OK, Cancel, Close, Escape, Timeout ], "output": [ field1, field2 ... ] }
 	return ret
 
+/* Below are event handlers and helper subroutines
+*/
 EF_OK:
 EF_Cancel:
 EF_Close:
 EF_Escape:
 EF_Timeout:
-	ret := { "event": SubStr(A_ThisLabel, 4), "output": [] }
+	ret := { "event": SubStr(A_ThisLabel, 4), "output": [] } ;// return value
 	for i, hInput in flds
 	{
 		GuiControlGet text,, %hInput%
 		ret.output[A_Index] := text
 	}
-	if ( NumGet( &(ret.output) + 4 * A_PtrSize ) <= 1 )
+	if ( NumGet( &(ret.output) + 4*A_PtrSize ) <= 1 ) ;// ObjCount()
 		ret.output := ret.output[1]
 	
 	;// Destroy tooltip
 	if hTip
 		DllCall("DestroyWindow", "Ptr", hTip)
+	
 	Gui Destroy
+	
+	;// Destroy window icon(s) (if any)
+	if hIconL
+		DllCall("DestroyIcon", "Ptr", hIconL)
+	if hIconS
+		DllCall("DestroyIcon", "Ptr", hIconS)
 	return
 
-EF_SelectFile: ;// FileSelectFile(v1.1) / FileSelect(v2.0-a) workaround
-	hInput     := btns[A_GuiControl].input
-	, options  := btns[A_GuiControl].options
-	; , flags    := fld.options[1]
-	, root_dir := options[2]
-	, prompt   := options[3]
-	, filter   := options[4]
+/* FileSelectFile(v1.1) / FileSelect(v2.0-a) workaround
+ */
+EF_SelectFile: ;// [Options, RootDir\Filename, Prompt, Filter]
+	hInput     := btns[A_GuiControl].input ;// handle of asscoiated Edit control
+	, dlg_args := btns[A_GuiControl].args
+	, opt      := dlg_args[1]
+	if ( (prompt := dlg_args[3]) == "" )
+		prompt := "Select File - " . A_ScriptName
+	if ( (filter := dlg_args[4]) == "" )
+		filter := "All Files (*.*)"
 
-	;// Output goes here
+	;// Initialize lpstrFile, output goes here
 	VarSetCapacity(lpstrFile, 0xffff)
+	
+	;// Get initial dir and/or initial file name 
+	GuiControlGet init_dir,, %hInput%
+	if (init_dir == "")
+		init_dir := dlg_args[2]
+	if !InStr(FileExist(init_dir), "D")
+	{
+		init_file := is_v2 ? init_dir : "init_dir"
+		SplitPath %init_file%, init_file, init_dir
+		if (init_file != "")
+			StrPut(init_file, &lpstrFile + 0), init_file := ""
+	}
 
-	;// Flags member -> OFN_EXPLORER|OFN_FILEMUSTEXIST|OFN_HIDEREADONLY
-	flags := 0x80000|0x1000|0x4
+	;// Flags member of OPENFILENAME struct
+	flags := 0x80000|0x4 ;// OFN_EXPLORER|OFN_HIDEREADONLY
+	flag  := SubStr(opt, InStr( "MS", SubStr(opt, 1, 1) ) ? 2 : 1) + 0
+	for i in flag ? fs_flags : 0
+		if (flag & i)
+			flags |= fs_flags[i]
+	
+	if InStr(opt, "M")
+		flags |= 0x200 ;// OFN_ALLOWMULTISELECT = 0x200
 
 	;// Setup lpstrFilter member of OPENFILENAME struct
 	VarSetCapacity( lpstrFilter, 2*StrLen(filter) * (A_IsUnicode ? 2 : 1), 0 )
-	, ext := SubStr(filter, InStr( filter,"(" )+1, -1)
+	, ext   := SubStr(filter, InStr( filter,"(" )+1, -1)
 	, flen1 := (StrLen(filter) + 1) * (A_IsUnicode ? 2 : 1)
 	, flen2 := (StrLen(ext) + 1) * (A_IsUnicode ? 2 : 1)
 	, StrPut(filter, &lpstrFilter + 0, flen1)
 	, StrPut(ext, &lpstrFilter + flen1, flen2)
 	, NumPut(0, lpstrFilter, flen1 + flen2, A_IsUnicode ? "UShort" : "UChar")
 
-	;// Create OPENFILENAME struct
+	;// Create OPENFILENAME struct and set members
 	VarSetCapacity(OPENFILENAME, sizeof_OFN, 0)
-	, NumPut(sizeof_OFN, OPENFILENAME, 0, "UInt")                ;// lStructSize
-	, NumPut(A_Gui, OPENFILENAME, 4, "Ptr")                      ;// hwndOwner
-	, NumPut(&lpstrFilter, OPENFILENAME, 4 + 2*A_PtrSize, "Ptr") ;// lpstrFilter
-	, NumPut(1, OPENFILENAME, 8 + 4*A_PtrSize, "UInt")           ;// nFilterIndex
-	, NumPut(&lpstrFile, OPENFILENAME, 12 + 4*A_PtrSize, "Ptr")  ;// lpstrFile
-	, NumPut(0xffff, OPENFILENAME, 12 + 5*A_PtrSize, "UInt")     ;// nMaxFile
-	, NumPut(&root_dir, OPENFILENAME, 20 + 6*A_PtrSize, "Ptr")   ;// lpstrInitialDir
-	, NumPut(&prompt, OPENFILENAME, 20 + 7*A_PtrSize, "Ptr")     ;// lpstrTitle
-	, NumPut(flags, OPENFILENAME, 20 + 8*A_PtrSize, "UInt")      ;// Flags
+	, NumPut(sizeof_OFN,   OPENFILENAME, 0,                "UInt") ;// lStructSize
+	, NumPut(A_Gui,        OPENFILENAME, 4,                "Ptr")  ;// hwndOwner
+	, NumPut(&lpstrFilter, OPENFILENAME, 4 + 2*A_PtrSize,  "Ptr")  ;// lpstrFilter
+	, NumPut(1,            OPENFILENAME, 8 + 4*A_PtrSize,  "UInt") ;// nFilterIndex
+	, NumPut(&lpstrFile,   OPENFILENAME, 12 + 4*A_PtrSize, "Ptr")  ;// lpstrFile
+	, NumPut(0xffff,       OPENFILENAME, 12 + 5*A_PtrSize, "UInt") ;// nMaxFile
+	, NumPut(&init_dir,    OPENFILENAME, 20 + 6*A_PtrSize, "Ptr")  ;// lpstrInitialDir
+	, NumPut(&prompt,      OPENFILENAME, 20 + 7*A_PtrSize, "Ptr")  ;// lpstrTitle
+	, NumPut(flags,        OPENFILENAME, 20 + 8*A_PtrSize, "UInt") ;// Flags
 
-	if !DllCall("comdlg32\GetOpenFileName", "Ptr", &OPENFILENAME)
+	;// GetFileName := "comdlg32\" . ( InStr(opt, "S") ? "GetSaveFileName" : "GetOpenFileName" )
+	if !DllCall("comdlg32\" . ( InStr(opt, "S") ? "GetSaveFileName" : "GetOpenFileName" ), "Ptr", &OPENFILENAME)
 		return
+
+	;// Extract selected file name(s) from buffer
+	;   dir := DllCall("MulDiv", "Int", &lpstrFile, "Int", 1, "Int", 1, "Str")
+	addr := &lpstrFile, sel := dir := StrGet(addr), files := "" ;// initialize blank
+	if ( StrLen(dir) != 3 )
+		dir .= "\"
+	if (flags & 0x200) ;// OFN_ALLOWMULTISELECT
+		while (sel := StrGet( addr += (StrLen(sel) + 1) * (A_IsUnicode ? 2 : 1) ))
+			files .= dir . sel . "`n"
 	
-	;// selected := DllCall("MulDiv", "Int", &lpstrFile, "Int", 1, "Int", 1, "Str")
-	selected := StrGet( &lpstrFile )
-	if ( StrLen(selected) != 3 )
-		selected .= "\"
-	GuiControl,, %hInput%, % SubStr(selected, 1, -1)
+	GuiControl,, %hInput%, % SubStr(files ? files : dir, 1, -1)
 	return
 
-EF_SelectDir: ;// FileSelectFolder / DirSelect workaround
-	hInput    := btns[A_GuiControl].input
-	, options := btns[A_GuiControl].options
-	, shell   := ComObjCreate("Shell.Application")
+/* FileSelectFolder(v1.1) / DirSelect(v2.0-a) workaround
+ */
+EF_SelectDir: ;// [StartingFolder, Options, Prompt]
+	hInput     := btns[A_GuiControl].input
+	, dlg_args := btns[A_GuiControl].args
+	if ( (prompt := dlg_args[3]) == "" )
+		prompt := "Select Folder - " . A_ScriptName
 	
-	if !( folder := shell.BrowseForFolder(
-	(Join Q C
-		0,
-		"Select a folder:",
-		0x1|0x40|0x4000,
-		A_MyDocuments
-	)) )
+	flags := 0x1 ;// BIF_RETURNONLYFSDIRS = 0x1
+	if ( (flag := ds_flags[dlg_args[2] + 0]) != "" )
+		flags |= flag
+
+	;// Get starting folder
+	GuiControlGet init_dir,, %hInput%
+	if !InStr(FileExist(init_dir), "D")
+		if ( (init_dir := dlg_args[1]) == "" )
+			init_dir := "*" . A_MyDocuments
+	
+	if !shell ;// this is a static variable, we don't initialize it unless needed
+		shell := ComObjCreate("Shell.Application")
+	if !( folder := shell.BrowseForFolder(A_Gui + 0, prompt, flags, init_dir) )
 		return
 	
 	GuiControl,, %hInput%, % folder.self.Path
 	return
 
+/* Create/attach tooltip routine
+ */
 EF_SetToolTip:
 	if !NumGet( &tt + 4 * A_PtrSize ) ;// no arguments
 		return
 	
-	if !hTip
+	if !hTip ;// this is a static variable
 	{
-		hTip := DllCall(
-		(Join Q C
-			"CreateWindowEx",
-			"UInt", 0x00000008, ;// WS_EX_TOPMOST:=0x8
-			"Str",  "tooltips_class32",
-			"Ptr",  0,
-			"UInt", 0x80000002, ;// WS_POPUP:=0x80000000|TTS_NOPREFIX:=0x02
-			"Int",  0x80000000,
-			"Int",  0x80000000,
-			"Int",  0x80000000,
-			"Int",  0x80000000, ;// CW_USEDEFAULT:=0x80000000
-			"Ptr",  hForm,
-			"Ptr",  0,
-			"Ptr",  0,
-			"Ptr",  0,
-			"Ptr"
-		))
-		;// TTM_SETMAXTIPWIDTH:=0x0418
+		;// WS_EX_TOPMOST = 0x8, CW_USEDEFAULT = 0x80000000
+		hTip := DllCall("CreateWindowEx", "UInt", 0x8, "Str", "tooltips_class32"
+		     ,  "Ptr", 0, "UInt", 0x80000002 ;// WS_POPUP:=0x80000000|TTS_NOPREFIX:=0x02
+		     ,  "Int", 0x80000000, "Int",  0x80000000, "Int", 0x80000000, "Int", 0x80000000
+		     ,  "Ptr", hForm, "Ptr", 0, "Ptr", 0, "Ptr", 0, "Ptr")
+		
+		;// TTM_SETMAXTIPWIDTH = 0x0418
 		DllCall("SendMessage", "Ptr", hTip, "Int", 0x0418, "Ptr", 0, "Ptr", 0)
-		;// for Windows XP
+		
+		;// for Windows XP issues
 		if is_xp
 		{
 			tt_tmp := tt, tt := { "ctrl": hForm, "text": "" }
