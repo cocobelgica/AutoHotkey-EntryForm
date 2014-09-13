@@ -93,8 +93,9 @@ Option = Argument(s) | Description
 
 **Remarks:**
 
- * For _-fs_ and _-ds_, order of arguments is the same as in their counterpart AHK commands
+ * For _-fs_ and _-ds_, order of the arguments is the same as in their counterpart AHK commands
  * Input field width must not be specified, it is calculated automatically based on the EntryForm window width as specified in _form_ parameter
+ * For _-fs_ and _-ds_, if the button's associated _Edit_ control is **NOT** empty, a [SplitPath](http://ahkscript.org/docs/commands/SplitPath.htm) will be performed on the text(contents), _OutDir_ will be used as the initial directory and _OutFileName_ will be used as the initial file name (latter applies to _-fs_) when the dialog is shown.
 
 **Example:**
 
