@@ -48,13 +48,15 @@ Option = Argument(s) |  Description
 ``-fnt OR -f <options,name>`` | Gui font, argument(s) is the same as in [Gui, Font](http://ahkscript.org/docs/commands/Gui.htm#Font)
 ``-ico OR -i <icon,icon-no>`` | window icon, *icon* can be a _file_, _exe_ or _dll_
 ``-t <timeout>``<br>``Tn`` | timeout in milliseconds. ``-t <timeout>`` syntax can<br> simply be written as ``Tn``, where *n* is the amount in ms.
+``-F <function>``<br>``Ffunction`` | callback function. Output is passed as 1st parameter.<br>_-F_ is case sensitive when using dash ``-`` syntax
 ``-pos OR -p <Xn Yn Wn>``<br>``Xn Yn Wn`` |Window position, same as in [Gui, Show](http://ahkscript.org/docs/commands/Gui.htm#Show). Default is<br>``xCenter yCenter w375`` 
 ``-opt OR -o <options>``<br>``[ options ... ]`` | standard Gui [options](http://ahkscript.org/docs/commands/Gui.htm#Options) ``e.g.: +ToolWindow etc.``
 
 **Remarks:**
 
  * Window height must not be specified - it is calculated automatically based on the total number of input fields
- * For _-ico_, the same icon will be used for the window caption (small) and the Alt+Tab switcher (large) 
+ * For _-ico_, the same icon will be used for the window caption (small) and the Alt+Tab switcher (large)
+ * If a callback function is defined (via _-F_ option), the function will return immediately instead of waiting for the window to close. Function must require atleast one(1) parameter. However, if a _-t_ (timeout) is defined, callback function is ignored
  
 **Example:**
 
@@ -117,4 +119,4 @@ out := EntryForm(form, field1, field2)
 
 ### Remarks:
 
- * Behavior is similar to that of the _InputBox_ command, that is the script will  be in a _waiting state_ while the _EntryForm_ window is shown. To bypass this, the caller can  use a [timer](http://ahkscript.org/docs/commands/SetTimer.htm).
+ * Behavior is similar to that of the _InputBox_ command, that is the script will  be in a _waiting state_ while the _EntryForm_ window is shown. To bypass this, the caller can use a [timer](http://ahkscript.org/docs/commands/SetTimer.htm) or define a callback function using the _-F_ option - see _Form_ options above.
