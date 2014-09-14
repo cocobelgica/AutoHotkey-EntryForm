@@ -15,13 +15,14 @@
  * Parameter(s) Details:
  *     Space-delimited string contianing one or more of the following
  *     options + argument(s). Arguments are passed in command line-like syntax.
- *     Arguments conatining spaces must be enclosed in single quotes. Multiple
+ *     Arguments containing spaces must be enclosed in single quotes. Multiple
  *     arguments are separated by a comma.
  * Form parameter options:
  *     -cap | -c <caption>                 - window title/caption
  *     -fnt | -f <options,name>            - window font
  *     -ico | -i <icon,icon-no>            - window icon
  *     -t <timeout> OR Tn                  - timeout in milliseconds
+ *     -F <function> OR Ffunction          - callback function
  *     -pos | -p <pos> OR [Xn, Yn, Wn]     - window position when shown
  *     -opt | -o <options> OR [options...] - standard GUI options
  * Fields* parameter options:
@@ -87,12 +88,14 @@ EntryForm(form, fields*) {
 	static ds_flags := { 0: 0x200, 1: 0x40, 2: 0x210, 3: 0x50, 4: 0x200, 5: 0x200 }
 	     , shell    := 0 ;// ComObjCreate("Shell.Application") -> just set if used/needed
 
+	;// Used for EntryForm(s) with defined callback function
+	static cb_forms := {}
 
 	;// local variables (main function body)
 	local s_opt, quoted, opt, i, j, str, key, hForm, hIconL := hIconS := 0
 	    , RECT, width, idx, field, font, is_input, ftype, hPrompt, hInput
-	    , is_mline, input_pos, btn, hBtn, vBtn, BTN_IMGLIST, btns := {}, ii, jj
-	    , b_arg, k, dhw, flds := [], ret
+	    , is_mline, input_pos, btn, wd, hBtn, vBtn, BTN_IMGLIST, btns := {}, ii
+	    , jj, b_arg, k, dhw, flds := [], callback := 0, ret
 	
 	;// local variables for EF_SelectFile subroutine(local label)
 	;   opt, i, is_mline -> declared above
@@ -144,8 +147,14 @@ EntryForm(form, fields*) {
 			if (opt == "")
 				continue
 			
-			if (opt ~= "i)^-([cfipto]|cap|fnt|ico|pos|to|opt)$")
+			if (opt ~= "^-(f|(?i)[cipto]|cap|fnt|ico|pos|to|opt)$")
 				form[ key := args[SubStr(opt, 2, 1)] ] := ""
+
+			else if (opt == "-F") ;// case-sensitive
+				form[ key := "callback" ] := ""
+
+			else if ( opt ~= (is_v2? "i)^f[a-z_]\w*$" : "i)^f[a-z0-9_@]+$") )
+				form.callback := Func(SubStr(opt, 2))
 
 			else if (opt == "'")
 				form[key] := %del%(quoted, 1), key := ""
@@ -292,10 +301,10 @@ EntryForm(form, fields*) {
 			}
 
 			j += 1
-			GuiControl, Move, %hInput%, % "w" width - ( (btn_size + 3) * (is_mline? 1 : j) )
-			GuiControlGet input_pos, Pos, %hInput%
+			GuiControl, Move, %hInput%, % "w" wd := width - ( (btn_size + 3) * (is_mline? 1 : j) )
+			; GuiControlGet input_pos, Pos, %hInput%
 			if (j > 1)
-				GuiControl Move, %hBtn%, % "x" input_posW + 13 ;// margin + padding
+				GuiControl Move, %hBtn%, % "x" wd + 13 ;// 13 = margin + padding
 			Gui Add, Button, % "w" btn_size " h" btn_size
 			                 . " y" ( j > 1 && is_mline ? "+3" : input_posY )
 			                 . " xm+" width - btn_size
@@ -360,6 +369,21 @@ EntryForm(form, fields*) {
 	
 	;// Show the EntryForm and wait for it to close / gets destroyed
 	Gui Show, % "AutoSize " form.pos, % form.caption
+
+	;// Caller has defined a callback function
+	;   However, if Timeout is specified, callback function is ignored
+	if ( form.timeout ? 0 : form.callback )
+	{
+		;// Store some values needed by Gui/GuiControl event(s) routine
+		;   Integers in hex format when used as object keys are strings
+		cb_forms[hForm] := { "callback": form.callback, "flds": flds, "hTip": hTip
+		                   , "hIconS": hIconS, "hIconL": hIconL, "btns": btns }
+		
+		;// return, on event, the callback function is called passing the
+		;   output as the first parameter.
+		return true
+	}
+	
 	dhw := A_DetectHiddenWindows
 	DetectHiddenWindows On
 	WinWaitClose ahk_id %hForm%,, % form.timeout/1000
@@ -370,12 +394,20 @@ EntryForm(form, fields*) {
 	;// { "event": [ OK, Cancel, Close, Escape, Timeout ], "output": [ field1, field2 ... ] }
 	return ret
 
-/* Below are event handlers and helper subroutines
+/* Event handlers and helper subroutines
 */
 EF_OK:
 EF_Cancel:
 EF_Close:
 EF_Escape:
+	if ( callback := cb_forms.HasKey(A_Gui) )
+		callback := cb_forms[A_Gui].callback
+		, flds   := cb_forms[A_Gui].flds
+		, hTip   := cb_forms[A_Gui].hTip
+		, hIconS := cb_forms[A_Gui].hIconS
+		, hIconL := cb_forms[A_Gui].hIconL
+		, ObjRemove( cb_forms, A_Gui ) ;// remove from storage
+
 EF_Timeout:
 	ret := { "event": SubStr(A_ThisLabel, 4), "output": [] } ;// return value
 	for i, hInput in flds
@@ -397,11 +429,17 @@ EF_Timeout:
 		DllCall("DestroyIcon", "Ptr", hIconL)
 	if hIconS
 		DllCall("DestroyIcon", "Ptr", hIconS)
+
+	if callback
+		%callback%(ret) ;// call the callback function and pass output
+	
 	return
 
 /* FileSelectFile(v1.1) / FileSelect(v2.0-a) workaround
  */
 EF_SelectFile: ;// [Options, RootDir\Filename, Prompt, Filter]
+	if cb_forms.HasKey(A_Gui)
+		btns := cb_forms[A_Gui].btns
 	hInput     := btns[A_GuiControl].input ;// handle of asscoiated Edit control
 	, dlg_args := btns[A_GuiControl].args
 	, opt      := dlg_args[1]
@@ -475,6 +513,8 @@ EF_SelectFile: ;// [Options, RootDir\Filename, Prompt, Filter]
 /* FileSelectFolder(v1.1) / DirSelect(v2.0-a) workaround
  */
 EF_SelectDir: ;// [StartingFolder, Options, Prompt]
+	if cb_forms.HasKey(A_Gui)
+		btns := cb_forms[A_Gui].btns
 	hInput     := btns[A_GuiControl].input
 	, dlg_args := btns[A_GuiControl].args
 	if ( (prompt := dlg_args[3]) == "" )
