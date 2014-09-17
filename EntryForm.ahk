@@ -371,13 +371,14 @@ EntryForm(form, fields*) {
 	Gui Show, % "AutoSize " form.pos, % form.caption
 
 	;// Caller has defined a callback function
-	;   However, if Timeout is specified, callback function is ignored
+	;   However, if Tn(timeout) is specified, callback function is ignored
 	if ( form.timeout ? 0 : form.callback )
 	{
 		;// Store some values needed by Gui/GuiControl event(s) routine
-		;   Integers in hex format when used as object keys are strings
-		cb_forms[hForm] := { "callback": form.callback, "flds": flds, "hTip": hTip
-		                   , "hIconS": hIconS, "hIconL": hIconL, "btns": btns }
+		;   v1.1+: GUI handles(+HwndhGui) are stored as string(hex format),
+		;   convert to integer for consistency with v2.0-a050+
+		cb_forms[hForm+0] := { "callback": form.callback, "flds": flds, "hTip": hTip
+		                     , "hIconS": hIconS, "hIconL": hIconL, "btns": btns }
 		
 		;// return, on event, the callback function is called passing the
 		;   output as the first parameter.
@@ -400,13 +401,15 @@ EF_OK:
 EF_Cancel:
 EF_Close:
 EF_Escape:
-	if ( callback := cb_forms.HasKey(A_Gui) )
-		callback := cb_forms[A_Gui].callback
-		, flds   := cb_forms[A_Gui].flds
-		, hTip   := cb_forms[A_Gui].hTip
-		, hIconS := cb_forms[A_Gui].hIconS
-		, hIconL := cb_forms[A_Gui].hIconL
-		, ObjRemove( cb_forms, A_Gui ) ;// remove from storage
+	if ( callback := cb_forms.HasKey(hForm := A_Gui+0) ) ;// Regardless of AHK version, A_Gui is in hex format
+		callback := cb_forms[hForm].callback
+		, flds   := cb_forms[hForm].flds
+		, hTip   := cb_forms[hForm].hTip
+		, hIconS := cb_forms[hForm].hIconS
+		, hIconL := cb_forms[hForm].hIconL
+		;// Make sure remaining integer keys are not affected/adjusted
+		;   v2.0-a049+: ObjRemove does not affect remaining integer keys
+		, ObjRemove( cb_forms, ( is_v2? [hForm] : [hForm, ""] )* )
 
 EF_Timeout:
 	ret := { "event": SubStr(A_ThisLabel, 4), "output": [] } ;// return value
@@ -438,8 +441,8 @@ EF_Timeout:
 /* FileSelectFile(v1.1) / FileSelect(v2.0-a) workaround
  */
 EF_SelectFile: ;// [Options, RootDir\Filename, Prompt, Filter]
-	if cb_forms.HasKey(A_Gui)
-		btns := cb_forms[A_Gui].btns
+	if cb_forms.HasKey(A_Gui + 0)
+		btns := cb_forms[A_Gui + 0].btns
 	hInput     := btns[A_GuiControl].input ;// handle of asscoiated Edit control
 	, dlg_args := btns[A_GuiControl].args
 	, opt      := dlg_args[1]
@@ -513,8 +516,8 @@ EF_SelectFile: ;// [Options, RootDir\Filename, Prompt, Filter]
 /* FileSelectFolder(v1.1) / DirSelect(v2.0-a) workaround
  */
 EF_SelectDir: ;// [StartingFolder, Options, Prompt]
-	if cb_forms.HasKey(A_Gui)
-		btns := cb_forms[A_Gui].btns
+	if cb_forms.HasKey(A_Gui + 0)
+		btns := cb_forms[A_Gui + 0].btns
 	hInput     := btns[A_GuiControl].input
 	, dlg_args := btns[A_GuiControl].args
 	if ( (prompt := dlg_args[3]) == "" )
