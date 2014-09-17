@@ -29,6 +29,7 @@
  *     -p <prompt>                         - prompt
  *     -d <default>                        - default text
  *     -fnt <options,name;options,name>    - font, [prompt-font;input-font]
+ *     -in <input_ctrl> OR *INPUT_CTRL     - input field control type
  *     -cb <cuebanner>                     - cuebanner
  *     -tt <tooltip>                       - field tooltip
  *     -ud <updown-ctrl-options>           - attaches an UpDown control
@@ -59,22 +60,26 @@ EntryForm(form, fields*) {
 
 	static args := { "c":"caption", "f":"font", "fnt":"font", "i":"icon"
 	               , "p":"pos", "t":"timeout", "o":"options"
-	               , "-p":"prompt", "-d":"default", "-fnt":"font", "-cb":"cue"
-	               , "-cue":"cue", "-fs":"file", "-ds":"dir", "-tt":"tip"
+	               ;// fields* parameter options
+	               , "-p":"prompt", "-d":"default", "-fnt":"font", "-in":"input"
+	               , "-cb":"cue", "-cue":"cue", "-fs":"file", "-ds":"dir", "-tt":"tip"
 	               , "-ud":"updown", "-o":"options", "-opt":"options" }
 	     , delims := [ " ", ":", "`t", "`r", "`n" ]
 	
 	;// for DllCall()
 	static ExtractIconEx := "shell32\ExtractIconEx" . (A_IsUnicode ? "W" : "A")
 	     , GetWindowLong := A_Is64bitOS ? "GetWindowLongPtr" : "GetWindowLong"
+
+	;// Control types for input field(s)
+	static input_ctrls := { "E":"Edit", "CB":"ComboBox", "DDL":"DDL", "LB":"ListBox", "DT":"DateTime" }
 	
+	static btn_size := 0, himl := 0
+	     ; , ndl := ( is_v2 ? "i)" : "Oi)" ) . "(?<=^|,)\s*\K.*?(?=(?<!\\),|$)" ;// not used
+
 	;// Constants for TOOLINFO & OPENFILENAME structs
 	static TTM_ADDTOOL     := A_IsUnicode ? 0x0432 : 0x0404
 	     , sizeof_TOOLINFO := 24 + (6 * A_PtrSize)
 	     , sizeof_OFN      := 36 + (13 * A_PtrSize)
-	
-	static btn_size := 0, himl := 0
-	     , ndl := ( is_v2 ? "i)" : "Oi)" ) . "(?<=^|,)\s*\K.*?(?=(?<!\\),|$)" ;// not used
 
 	;// static variable(s) for EF_SelectFile subroutine
 	;   1 = OFN_FILEMUSTEXIST, 2 = OFN_PATHMUSTEXIST, 8 = OFN_CREATEPROMPT
@@ -93,7 +98,7 @@ EntryForm(form, fields*) {
 
 	;// local variables (main function body)
 	local s_opt, quoted, opt, i, j, str, key, hForm, hIconL := hIconS := 0
-	    , RECT, width, idx, field, font, is_input, ftype, hPrompt, hInput
+	    , RECT, width, idx, field, ctrl, font, is_input, ftype, hPrompt, hInput
 	    , is_mline, input_pos, btn, wd, hBtn, vBtn, BTN_IMGLIST, btns := {}, ii
 	    , jj, b_arg, k, dhw, flds := [], callback := 0, ret
 	
@@ -220,16 +225,23 @@ EntryForm(form, fields*) {
 				if (opt == "")
 					continue
 
-				if (opt ~= "i)^-([pdo]|fnt|cb|[fd]s|tt|ud|opt)$")
+				if (opt ~= "^-([pdo]|fnt|in|cb|[fd]s|tt|ud|opt)$")
 					field[ key := args[opt] ] := ""
 
 				else if (opt == "'")
 					field[key] := %del%(quoted, 1), key := ""
 
+				else if (opt ~= "i)^\*(E|CB|DDL|LB|DT)$")
+					field.input := SubStr(opt, 2)
+
 				else
 					key? ( field[key] := opt, key := "" ) : field.options .= " " . opt
 			}
 		}
+
+		;// Input field control type, defaults to Edit(E). The ff are allowed:
+		;   ComboBox(CB), DropDownList(DDL), ListBox(LB), DateTime(DT)
+		ctrl := input_ctrls[ field.HasKey("input") ? field.input : "E" ]
 
 		;// Set font
 		if field.HasKey("font")
@@ -248,7 +260,7 @@ EntryForm(form, fields*) {
 				Gui Font, % font[1], % font[2]
 			}
 
-			Gui Add, % is_input ? "Edit" : "Text"
+			Gui Add, % is_input ? ctrl : "Text"
 			       , % "xm w" width " Hwndh" ftype . ( is_input
 			         ? " y+5 " field.options
 			         : " Wrap y" ( idx == 1 ? 10 : input_posY+input_posH+10 ) )
@@ -263,8 +275,6 @@ EntryForm(form, fields*) {
 
 		flds[idx] := hInput
 		GuiControlGet input_pos, Pos, %hInput%
-		;// ES_MULTILINE := 0x0004
-		is_mline := DllCall(GetWindowLong, "Ptr", hInput, "Int", -16, "Ptr") & 0x0004
 
 		;// ToolTip
 		if field.HasKey("tip")
@@ -272,6 +282,12 @@ EntryForm(form, fields*) {
 			tt.ctrl := hInput, tt.text := field.tip
 			gosub EF_SetToolTip
 		}
+		
+		if (ctrl != "Edit") ;// skip rest of loop for other control types
+			continue
+
+		;// ES_MULTILINE := 0x0004
+		is_mline := DllCall(GetWindowLong, "Ptr", hInput, "Int", -16, "Ptr") & 0x0004
 
 		;// Cue banner | EM_SETCUEBANNER = 0x1501
 		if field.HasKey("cue")
@@ -387,7 +403,7 @@ EntryForm(form, fields*) {
 	
 	dhw := A_DetectHiddenWindows
 	DetectHiddenWindows On
-	WinWaitClose ahk_id %hForm%,, % form.timeout/1000
+	WinWaitClose ahk_id %hForm%,, % ( form.timeout != "" ? form.timeout/1000 : "" )
 	if ErrorLevel
 		gosub EF_Timeout ;// WinClose ahk_id %hForm% -> triggers EF_CLose
 	DetectHiddenWindows %dhw%
