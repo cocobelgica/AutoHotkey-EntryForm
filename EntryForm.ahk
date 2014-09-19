@@ -403,7 +403,7 @@ EntryForm(form, fields*) {
 	
 	dhw := A_DetectHiddenWindows
 	DetectHiddenWindows On
-	WinWaitClose ahk_id %hForm%,, % ( form.timeout != "" ? form.timeout/1000 : "" )
+	WinWaitClose ahk_id %hForm%,, % form.timeout/1000
 	if ErrorLevel
 		gosub EF_Timeout ;// WinClose ahk_id %hForm% -> triggers EF_CLose
 	DetectHiddenWindows %dhw%
